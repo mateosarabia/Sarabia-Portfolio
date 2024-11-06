@@ -1,0 +1,167 @@
+---
+title: "runs&wins"
+author: "mateo sarabia"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+Finding the relationship between runs and wins in the MLB.
+```{r}
+library(tidyverse)
+library(janitor)
+library(here)
+library(readr)
+library(ggplot2)
+library(ggrepel)
+library(Lahman)
+library(broom)
+```
+
+
+
+
+```{r}
+tail(Teams,)
+```
+
+```{r}
+help("Teams")
+view(Teams)
+```
+
+```{r}
+my_teams <- Teams %>%
+  filter(yearID > 2003) %>%
+  select(teamID,yearID,lgID,G,W,L,R,RA)
+my_teams %>%
+tail()
+```
+```{r}
+my_teams <- my_teams %>%
+  mutate(RD = R - RA, Wpct = W / (W + L))
+```
+
+```{r}
+run_diff <- ggplot(my_teams, aes(x = RD, y = Wpct)) + geom_point() + geom_smooth(method = "lm", se = FALSE, color = 'red') + scale_x_continuous("Run Differential") + scale_y_continuous("Winning Percentage")
+
+
+plot(run_diff)
+```
+
+```{r}
+linfit <- lm(Wpct ~ RD, data = my_teams)
+linfit
+```
+
+```{r}
+my_teams_augmented <- augment(linfit, data = my_teams)
+```
+
+```{r}
+base_plot <- ggplot(my_teams_augmented, aes(x = RD, y = .resid)) + geom_point(alpha = 0.3) + geom_hline(yintercept = 0, linetype = 3) + xlab("Run Differential") + ylab("Residual")
+
+highlight_teams <- my_teams_augmented %>%
+  arrange(desc(abs(.resid))) %>%
+  head(5)
+
+base_plot + geom_point(data = highlight_teams, color = 'red') + geom_text_repel(data = highlight_teams, color = 'red', aes(label = paste(teamID, yearID)))
+  
+```
+
+```{r}
+resid_summary <- my_teams_augmented %>%
+  summarize(N=n(), avg = mean(.resid), 
+            RMSE = sqrt(mean(.resid^2)))
+resid_summary
+
+rmse <- resid_summary %>%
+  pull(RMSE)
+```
+```{r}
+my_teams_augmented %>%
+  summarize(N = n(),
+            within_one = sum(abs(.resid) < rmse),
+            within_two = sum(abs(.resid) < 2 * rmse)) %>%
+  mutate(within_one_pct = within_one / N,
+         within_two_pct = within_two / N)
+```
+
+The pythagorean formula for win %
+non-linear model to estimate win percentage
+
+Wpct = R^2 / R^2 + RA^2
+
+
+
+```{r}
+my_teams <- my_teams %>%
+  mutate(Wpct_pyt = R^2 / (R^2 + RA^2))
+```
+
+```{r}
+my_teams <- my_teams %>%
+  mutate(residuals_pyt = Wpct - Wpct_pyt)
+my_teams %>%
+  summarize(rsme = sqrt(mean(residuals_pyt^2)))
+```
+final notes: not always more accurate, but there are situations where it is more applicable than the linear model.
+
+
+
+
+```{r}
+my_teams <- my_teams %>%
+  mutate(logWratio = log(W / L),
+         logRratio = log(R / RA))
+
+pytFit <- lm(logWratio ~ 0 + logRratio, data = my_teams)
+pytFit
+
+
+```
+this number solved above shows what value would give a more accurate prediction with my data rather than using ^2 in the formula
+
+
+rmse = root mean square error
+rmse in linear model: 0.02845697	
+rmse in pythagorean model: 0.02695098
+
+final notes: not always more accurate, but there are situations where it is more applicable than the linear model.
+
+
+How many runs for a win?
+
+```{r}
+D (expression(G * R ^2 / (R^2 + RA ^2)), "R")
+```
+
+
+```{r}
+IR <- function(RS = 5, RA = 5) {
+  (RS^2 + RA)^2 / (2*RS*RA^2)
+}
+```
+
+```{r}
+ir_table <- expand.grid(RS = seq(3, 6, .5),
+                        RA = seq(3, 6, .5))
+head(ir_table)
+
+
+tail(ir_table)
+```
+
+
+```{r}
+ir_table %>%
+  mutate(IRW = IR(RS, RA)) %>%
+  spread(key = RA, value = IRW, sep = "=") %>%
+  round(1)
+```
+
+* Next: take a look at the 2020 season and use the model to find expected win percentage and use that to compute the expected win amount. Then look at either 2019 or 2021 to see the differences in the shortened season bc of covid so how did that affect teams. Which did it help? Which did it hurt? why did some teams outperform themselves when others didn't? what are some data points that stick out? *
+
+
+
+

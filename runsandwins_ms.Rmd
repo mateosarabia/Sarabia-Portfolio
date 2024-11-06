@@ -1,0 +1,333 @@
+---
+title: "runs&wins"
+author: "mateo sarabia"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+Finding the relationship between runs and wins in the MLB.
+```{r}
+library(tidyverse)
+library(janitor)
+library(here)
+library(readr)
+library(ggplot2)
+library(ggrepel)
+library(Lahman)
+library(broom)
+```
+
+
+
+
+```{r}
+tail(Teams,)
+```
+
+```{r}
+help("Teams")
+view(Teams)
+```
+
+```{r}
+my_teams <- Teams %>%
+  filter(yearID > 2003) %>%
+  select(teamID,yearID,lgID,G,W,L,R,RA)
+my_teams %>%
+tail()
+```
+```{r}
+my_teams <- my_teams %>%
+  mutate(RD = R - RA, Wpct = W / (W + L))
+```
+
+```{r}
+run_diff <- ggplot(my_teams, aes(x = RD, y = Wpct)) + geom_point() + geom_smooth(method = "lm", se = FALSE, color = 'red') + scale_x_continuous("Run Differential") + scale_y_continuous("Winning Percentage")
+
+
+plot(run_diff)
+```
+
+```{r}
+linfit <- lm(Wpct ~ RD, data = my_teams)
+linfit
+```
+
+```{r}
+my_teams_augmented <- augment(linfit, data = my_teams)
+```
+
+```{r}
+base_plot <- ggplot(my_teams_augmented, aes(x = RD, y = .resid)) + geom_point(alpha = 0.3) + geom_hline(yintercept = 0, linetype = 3) + xlab("Run Differential") + ylab("Residual")
+
+highlight_teams <- my_teams_augmented %>%
+  arrange(desc(abs(.resid))) %>%
+  head(5)
+
+base_plot + geom_point(data = highlight_teams, color = 'red') + geom_text_repel(data = highlight_teams, color = 'red', aes(label = paste(teamID, yearID)))
+  
+```
+
+```{r}
+resid_summary <- my_teams_augmented %>%
+  summarize(N=n(), avg = mean(.resid), 
+            RMSE = sqrt(mean(.resid^2)))
+resid_summary
+
+rmse <- resid_summary %>%
+  pull(RMSE)
+```
+```{r}
+my_teams_augmented %>%
+  summarize(N = n(),
+            within_one = sum(abs(.resid) < rmse),
+            within_two = sum(abs(.resid) < 2 * rmse)) %>%
+  mutate(within_one_pct = within_one / N,
+         within_two_pct = within_two / N)
+```
+
+The pythagorean formula for win %
+non-linear model to estimate win percentage
+
+Wpct = R^2 / R^2 + RA^2
+
+
+
+```{r}
+my_teams <- my_teams %>%
+  mutate(Wpct_pyt = R^2 / (R^2 + RA^2))
+```
+
+```{r}
+my_teams <- my_teams %>%
+  mutate(residuals_pyt = Wpct - Wpct_pyt)
+my_teams %>%
+  summarize(rsme = sqrt(mean(residuals_pyt^2)))
+```
+final notes: not always more accurate, but there are situations where it is more applicable than the linear model.
+
+
+
+
+```{r}
+my_teams <- my_teams %>%
+  mutate(logWratio = log(W / L),
+         logRratio = log(R / RA))
+
+pytFit <- lm(logWratio ~ 0 + logRratio, data = my_teams)
+pytFit
+
+
+```
+this number solved above shows what value would give a more accurate prediction with my data rather than using ^2 in the formula
+
+
+rmse = root mean square error
+rmse in linear model: 0.02845697	
+rmse in pythagorean model: 0.02695098
+
+final notes: not always more accurate, but there are situations where it is more applicable than the linear model.
+
+
+How many runs for a win?
+
+```{r}
+D (expression(G * R ^2 / (R^2 + RA ^2)), "R")
+```
+
+
+```{r}
+IR <- function(RS = 5, RA = 5) {
+  (RS^2 + RA)^2 / (2*RS*RA^2)
+}
+```
+
+```{r}
+ir_table <- expand.grid(RS = seq(3, 6, .5),
+                        RA = seq(3, 6, .5))
+head(ir_table)
+
+
+tail(ir_table)
+```
+
+
+```{r}
+ir_table %>%
+  mutate(IRW = IR(RS, RA)) %>%
+  spread(key = RA, value = IRW, sep = "=") %>%
+  round(1)
+```
+
+* Next: take a look at the 2020 season and use the model to find expected win percentage and use that to compute the expected win amount. Then look at either 2019 or 2021 to see the differences in the shortened season bc of covid so how did that affect teams. Which did it help? Which did it hurt? why did some teams outperform themselves when others didn't? what are some data points that stick out? *
+
+
+```{r}
+my_teams2020 <- Teams %>%
+  filter(yearID == 2020) %>%
+  select(teamID,yearID,lgID,G,W,L,R,RA)
+my_teams %>%
+tail()
+```
+```{r}
+my_teams2020 <- my_teams2020 %>%
+  mutate(RD = R - RA, Wpct = W / (W + L))
+```
+
+```{r}
+run_diff <- ggplot(my_teams2020, aes(x = RD, y = Wpct)) + geom_point() + geom_smooth(method = "lm", se = FALSE, color = 'red') + scale_x_continuous("Run Differential") + scale_y_continuous("Winning Percentage")
+
+
+plot(run_diff)
+```
+
+```{r}
+linfit1 <- lm(Wpct ~ RD, data = my_teams2020)
+linfit1
+```
+
+```{r}
+my_teams_augmented_covid <- augment(linfit1, data = my_teams2020)
+```
+
+```{r}
+base_plot <- ggplot(my_teams_augmented_covid, aes(x = RD, y = .resid)) + geom_point(alpha = 0.3) + geom_hline(yintercept = 0, linetype = 3) + xlab("Run Differential") + ylab("Residual")
+
+highlight_teams <- my_teams_augmented_covid %>%
+  arrange(desc(abs(.resid))) %>%
+  head(30)
+
+base_plot + geom_point(data = highlight_teams, color = 'red') + geom_text_repel(data = highlight_teams, color = 'red', aes(label = paste(teamID)))
+  
+```
+```{r}
+base_plot <- ggplot(my_teams_augmented_covid, aes(x = RD, y = .resid*162)) + geom_point(alpha = 0.3) + geom_hline(yintercept = 0, linetype = 3) + xlab("Run Differential (2020)") + ylab("Predicted to Actual Wins (2020)")
+
+highlight_teams <- my_teams_augmented_covid %>%
+  arrange(desc(abs(.resid*162))) %>%
+  head(30)
+
+base_plot + geom_point(data = highlight_teams, color = 'black') + geom_text_repel(data = highlight_teams, color = 'red', aes(label = paste(teamID)))
+  
+```
+
+2021 data: 
+
+
+```{r}
+my_teams2021 <- Teams %>%
+  filter(yearID == 2021) %>%
+  select(teamID,yearID,lgID,G,W,L,R,RA)
+my_teams2021 %>%
+tail()
+```
+
+```{r}
+my_teams2021 <- my_teams2021 %>%
+  mutate(RD = R - RA, Wpct = W / (W + L))
+```
+
+```{r}
+run_diff <- ggplot(my_teams2021, aes(x = RD, y = Wpct)) + geom_point() + geom_smooth(method = "lm", se = FALSE, color = 'red') + scale_x_continuous("Run Differential") + scale_y_continuous("Winning Percentage")
+
+
+plot(run_diff)
+```
+
+```{r}
+linfit2 <- lm(Wpct ~ RD, data = my_teams2021)
+linfit2
+```
+
+```{r}
+my_teams_augmented_2021 <- augment(linfit2, data = my_teams2021)
+```
+
+```{r}
+base_plot <- ggplot(my_teams_augmented_2021, aes(x = RD, y = .resid*162)) + geom_point(alpha = 0.3) + geom_hline(yintercept = 0, linetype = 3) + xlab("Run Differential (2021)") + ylab("Predicted to Actual Wins (2021)")
+
+highlight_teams <- my_teams_augmented_2021 %>%
+  arrange(desc(abs(.resid*162))) %>%
+  head(30)
+
+base_plot + geom_point(data = highlight_teams, color = 'black') + geom_text_repel(data = highlight_teams, color = 'red', aes(label = paste(teamID)))
+```
+
+```{r}
+my_teams_augmented_covid <- my_teams_augmented_covid %>%
+  mutate(xGW = .resid*60, xW = xGW + W)
+```
+
+
+```{r}
+base_plot <- ggplot(my_teams_augmented_covid, aes(x = xW, y = W)) + geom_point(alpha = 0.3) + geom_hline(yintercept = 0, linetype = 3) + xlab("xWins (2020)") + ylab("Wins (2020)")
+
+highlight_teams <- my_teams_augmented_covid %>%
+  arrange(desc(abs(W))) %>%
+  tail(30)
+
+base_plot + geom_point(data = highlight_teams, color = 'black') + geom_text_repel(data = highlight_teams, color = 'red', aes(label = paste(teamID)))
+```
+
+```{r}
+my_teams_augmented_2021 <- my_teams_augmented_2021 %>%
+  mutate(xGW = .resid*162, xW = xGW + W)
+```
+
+
+```{r}
+base_plot <- ggplot(my_teams_augmented_2021, aes(x = xW, y = W)) + geom_point(alpha = 0.3) + geom_hline(yintercept = 0, linetype = 3) + xlab("xWins (2021)") + ylab("Wins (2021)")
+
+highlight_teams <- my_teams_augmented_2021 %>%
+  arrange(desc(abs(W))) %>%
+  tail(30)
+
+base_plot + geom_point(data = highlight_teams, color = 'black') + geom_text_repel(data = highlight_teams, color = 'red', aes(label = paste(teamID)))
+```
+```{r}
+base_plot <- ggplot(my_teams_augmented_2021, aes(x = RA, y = W)) + geom_point(alpha = 0.3) + geom_hline(yintercept = 0, linetype = 3) + xlab("Runs Allowed (2021)") + ylab("Wins (2021)")
+
+highlight_teams <- my_teams_augmented_2021 %>%
+  arrange(desc(abs(W))) %>%
+  tail(30)
+
+base_plot + geom_point(data = highlight_teams, color = 'black') + geom_text_repel(data = highlight_teams, color = 'red', aes(label = paste(teamID)))
+```
+
+```{r}
+base_plot <- ggplot(my_teams_augmented_2021, aes(x = R, y = W)) + geom_point(alpha = 0.3) + geom_hline(yintercept = 0, linetype = 3) + xlab("Runs Scored (2021)") + ylab("Wins (2021)")
+
+highlight_teams <- my_teams_augmented_2021 %>%
+  arrange(desc(abs(W))) %>%
+  tail(30)
+
+base_plot + geom_point(data = highlight_teams, color = 'black') + geom_text_repel(data = highlight_teams, color = 'red', aes(label = paste(teamID)))
+```
+
+```{r}
+base_plot <- ggplot(my_teams_augmented_covid, aes(x = RA, y = W)) + geom_point(alpha = 0.3) + geom_hline(yintercept = 0, linetype = 3) + xlab("Runs Allowed (2020)") + ylab("Wins (2020)")
+
+highlight_teams <- my_teams_augmented_covid %>%
+  arrange(desc(abs(W))) %>%
+  tail(30)
+
+base_plot + geom_point(data = highlight_teams, color = 'black') + geom_text_repel(data = highlight_teams, color = 'red', aes(label = paste(teamID)))
+```
+
+
+```{r}
+base_plot <- ggplot(my_teams_augmented_covid, aes(x = R, y = W)) + geom_point(alpha = 0.3) + geom_hline(yintercept = 0, linetype = 3) + xlab("Runs Scored (2020)") + ylab("Wins (2020)")
+
+highlight_teams <- my_teams_augmented_covid %>%
+  arrange(desc(abs(W))) %>%
+  tail(30)
+
+base_plot + geom_point(data = highlight_teams, color = 'black') + geom_text_repel(data = highlight_teams, color = 'red', aes(label = paste(teamID)))
+```
+** Next: look into why there was more of an affect on wins with runs allowed vs. runs scored? the plots show there is more of a correlation but is there a numerical value that you should try to hold teams to an X amount of runs per game while trying to score a Y amount of runs on average, to create the best possible scenario to win.
+
+
+
+
+
